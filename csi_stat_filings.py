@@ -378,6 +378,86 @@ class CSIFilingsScraper:
         return downloaded
 
 
+def run(
+    list_filings: bool = False,
+    download: bool = False,
+    filing_type: Optional[str] = None,
+    year: Optional[int] = None,
+    quarter: Optional[str] = None,
+    output: str = "downloads",
+    overwrite: bool = False,
+    use_known: bool = True,
+    verify: bool = False,
+) -> list[Filing]:
+    """
+    Run the scraper programmatically (useful for notebooks like Colab/Jupyter).
+
+    Args:
+        list_filings: Print available filings
+        download: Download the filings
+        filing_type: Filter by type (shareholder_report, financial_statements, mda, aif)
+        year: Filter by year (e.g., 2023)
+        quarter: Filter by quarter (Q1, Q2, Q3, Q4)
+        output: Output directory for downloads
+        overwrite: Overwrite existing files
+        use_known: Use known filing patterns instead of scraping
+        verify: Verify URLs exist before listing (slower)
+
+    Returns:
+        List of Filing objects
+
+    Example:
+        # List all 2023 MD&A filings
+        filings = run(list_filings=True, year=2023, filing_type="mda")
+
+        # Download all shareholder reports
+        run(download=True, filing_type="shareholder_report")
+    """
+    scraper = CSIFilingsScraper(output_dir=output)
+
+    print("Fetching available filings...")
+    if use_known:
+        print("Using known filing patterns...")
+        filings = scraper._get_known_filings(verify=verify)
+    else:
+        filings = scraper.get_filings()
+        if not filings:
+            print("Falling back to known filing patterns...")
+            filings = scraper._get_known_filings(verify=verify)
+
+    if not filings:
+        print("No filings found.")
+        return []
+
+    # Apply filters
+    filings = scraper.filter_filings(
+        filings,
+        filing_type=filing_type,
+        year=year,
+        quarter=quarter,
+    )
+
+    if not filings:
+        print("No filings match the specified filters.")
+        return []
+
+    if list_filings:
+        print(f"\nFound {len(filings)} filings:\n")
+        for filing in filings:
+            type_str = f"[{filing.filing_type}]" if filing.filing_type else ""
+            year_str = f"{filing.year}" if filing.year else ""
+            quarter_str = filing.quarter or ""
+            print(f"  {type_str:25} {year_str:6} {quarter_str:4} {filing.title}")
+            print(f"  {'':25} URL: {filing.url}\n")
+
+    if download:
+        print(f"\nDownloading {len(filings)} filings to {output}/...")
+        downloaded = scraper.download_filings(filings, overwrite=overwrite)
+        print(f"\nDownloaded {len(downloaded)}/{len(filings)} filings successfully.")
+
+    return filings
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Scrape and download CSI Software statutory filings",
